@@ -45,6 +45,7 @@ async function bootstrap() {
           { error: normalizedError },
           'Falha ao conectar WhatsApp. Nova tentativa em 30 segundos.'
         );
+        logger.error(`Falha ao conectar WhatsApp. Nova tentativa em 30 segundos. Motivo: ${normalizedError.message}`);
 
         setTimeout(() => {
           void connectWithRetry();
