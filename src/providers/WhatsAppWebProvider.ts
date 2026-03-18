@@ -10,10 +10,10 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode-terminal';
-import pino from 'pino';
 import { IWhatsAppProvider } from './IWhatsAppProvider';
 import { createLogger } from '../config/logger';
 import { env, whatsappConfig } from '../config/environment';
+import pino from 'pino';
 
 const logger = createLogger('WhatsAppProvider');
 
@@ -24,6 +24,45 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
   private sock: WASocket | null = null;
   private messageHandler: ((from: string, message: string, messageId: string, contactName?: string) => Promise<void>) | null = null;
   private connectionState: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
+
+  private async wait(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private async requestPairingCodeWithRetry(phoneNumber: string, maxAttempts = 3): Promise<string> {
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        if (!this.sock) {
+          throw new Error('Socket do WhatsApp ainda não está disponível');
+        }
+
+        if (attempt === 1) {
+          await this.wait(5000);
+        } else {
+          await this.wait(3000 * attempt);
+        }
+
+        logger.info({ attempt, maxAttempts }, 'Solicitando codigo de pareamento');
+        return await this.sock.requestPairingCode(phoneNumber);
+      } catch (error) {
+        lastError = error;
+        const normalizedError = error instanceof Error
+          ? { name: error.name, message: error.message, stack: error.stack }
+          : { message: String(error) };
+
+        logger.warn(
+          { attempt, maxAttempts, error: normalizedError },
+          'Falha ao solicitar codigo de pareamento'
+        );
+      }
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(String(lastError ?? 'Falha desconhecida ao solicitar codigo de pareamento'));
+  }
 
   /**
    * Conecta ao WhatsApp
@@ -62,19 +101,21 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
           throw new Error('WHATSAPP_PAIRING_NUMBER é obrigatório quando WHATSAPP_USE_PAIRING_CODE=true');
         }
 
-        const code = await this.sock.requestPairingCode(whatsappConfig.pairingNumber);
+        const code = await this.requestPairingCodeWithRetry(whatsappConfig.pairingNumber);
         logger.info(
           { pairingCode: code, pairingNumber: whatsappConfig.pairingNumber },
           'Codigo de pareamento gerado. No WhatsApp: Aparelhos conectados > Conectar com numero de telefone'
         );
       }
 
+      // Salvar credenciais quando atualizadas
       this.sock.ev.on('creds.update', saveCreds);
 
+      // Gerenciar conexão
       this.sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
-        if (qr) {
+        if (qr && !usePairingCode) {
           logger.info('QR Code gerado. Escaneie com seu WhatsApp:');
           qrcode.generate(qr, { small: false });
         }
@@ -105,6 +146,10 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
         }
       });
 
+      // Salva credenciais quando atualizadas
+      this.sock.ev.on('creds.update', saveCreds);
+
+      // Handler de mensagens
       this.sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
 
@@ -130,6 +175,7 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
    */
   private async handleIncomingMessage(msg: proto.IWebMessageInfo): Promise<void> {
     try {
+      // Ignora mensagens próprias e broadcasts
       if (msg.key.fromMe) return;
       if (!msg.key.remoteJid) return;
       if (isJidBroadcast(msg.key.remoteJid)) return;
@@ -137,11 +183,13 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
 
       const from = msg.key.remoteJid;
 
+      // IGNORA MENSAGENS DE GRUPOS - Só responde em conversas privadas
       if (from.endsWith('@g.us')) {
         logger.info('Mensagem de grupo ignorada', { from });
         return;
       }
 
+      // Extrai nome do contato (pushName) ou usa o número
       const contactName = msg.pushName || from.split('@')[0];
 
       const messageText =
@@ -156,6 +204,7 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
 
       logger.info('Mensagem recebida', { from, contactName, message: messageText });
 
+      // Chama handler registrado com nome do contato
       if (this.messageHandler) {
         await this.messageHandler(from, messageText.trim(), messageId, contactName);
       }
@@ -182,7 +231,7 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
   }
 
   /**
-   * Envia menu formatado
+   * Envia menu formatado (usando texto formatado)
    */
   async sendMenu(to: string, message: string, options: string[]): Promise<void> {
     const formattedMenu = `${message}\n\n${options.join('\n')}`;
@@ -190,7 +239,7 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
   }
 
   /**
-   * Envia botões
+   * Envia botões (fallback para texto no Baileys)
    */
   async sendButtons(to: string, message: string, buttons: string[]): Promise<void> {
     const formattedButtons = `${message}\n\n${buttons.map((btn, idx) => `${idx + 1}. ${btn}`).join('\n')}`;
@@ -198,7 +247,7 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
   }
 
   /**
-   * Envia lista
+   * Envia lista (fallback para texto no Baileys)
    */
   async sendList(to: string, message: string, title: string, items: string[]): Promise<void> {
     const formattedList = `${message}\n\n*${title}*\n${items.map((item, idx) => `${idx + 1}. ${item}`).join('\n')}`;
