@@ -56,6 +56,7 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
           { attempt, maxAttempts, error: normalizedError },
           'Falha ao solicitar codigo de pareamento'
         );
+        logger.warn(`Falha ao solicitar codigo de pareamento (tentativa ${attempt}/${maxAttempts}): ${normalizedError.message}`);
       }
     }
 
@@ -85,6 +86,9 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
         },
         'Configuracao de autenticacao do WhatsApp carregada'
       );
+      logger.info(
+        `Configuracao de autenticacao do WhatsApp carregada | sessionPath=${env.WHATSAPP_SESSION_PATH} | usePairingCode=${usePairingCode} | hasPairingNumber=${Boolean(whatsappConfig.pairingNumber)}`
+      );
 
       this.sock = makeWASocket({
         version,
@@ -101,11 +105,13 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
           throw new Error('WHATSAPP_PAIRING_NUMBER é obrigatório quando WHATSAPP_USE_PAIRING_CODE=true');
         }
 
+        logger.info(`Solicitando codigo de pareamento para o numero ${whatsappConfig.pairingNumber}`);
         const code = await this.requestPairingCodeWithRetry(whatsappConfig.pairingNumber);
         logger.info(
           { pairingCode: code, pairingNumber: whatsappConfig.pairingNumber },
           'Codigo de pareamento gerado. No WhatsApp: Aparelhos conectados > Conectar com numero de telefone'
         );
+        logger.info(`Codigo de pareamento gerado: ${code}`);
       }
 
       // Salvar credenciais quando atualizadas
@@ -165,6 +171,10 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
         : { message: String(error) };
 
       logger.error({ error: normalizedError }, 'Erro ao conectar WhatsApp');
+      logger.error(`Erro ao conectar WhatsApp: ${normalizedError.message}`);
+      if (normalizedError.stack) {
+        logger.error(normalizedError.stack);
+      }
       this.connectionState = 'disconnected';
       throw error;
     }
