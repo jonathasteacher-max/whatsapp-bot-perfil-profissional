@@ -28,21 +28,38 @@ async function bootstrap() {
     // Cria bot service
     const botService = new BotService(whatsappProvider);
 
-    // Conecta ao WhatsApp
-    await whatsappProvider.connect();
-
     // Inicia bot
     await botService.start();
 
-    logger.info('✅ Aplicação iniciada com sucesso!');
-    logger.info('👉 Aguardando QR Code para conectar WhatsApp...');
+    const connectWithRetry = async () => {
+      try {
+        await whatsappProvider.connect();
+        logger.info('✅ Aplicação iniciada com sucesso!');
+        logger.info('👉 Aguardando autenticacao do WhatsApp...');
+      } catch (error) {
+        const normalizedError = error instanceof Error
+          ? { name: error.name, message: error.message, stack: error.stack }
+          : { message: String(error) };
+
+        logger.error(
+          { error: normalizedError },
+          'Falha ao conectar WhatsApp. Nova tentativa em 30 segundos.'
+        );
+
+        setTimeout(() => {
+          void connectWithRetry();
+        }, 30_000);
+      }
+    };
+
+    await connectWithRetry();
 
     // Graceful shutdown
     const shutdown = async () => {
       logger.info('Encerrando aplicação...');
-      
+
       await whatsappProvider.disconnect();
-      
+
       server.close(() => {
         logger.info('Servidor HTTP encerrado');
         process.exit(0);
@@ -51,9 +68,12 @@ async function bootstrap() {
 
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
-
   } catch (error) {
-    logger.error('Erro fatal ao iniciar aplicação', { error });
+    const normalizedError = error instanceof Error
+      ? { name: error.name, message: error.message, stack: error.stack }
+      : { message: String(error) };
+
+    logger.error({ error: normalizedError }, 'Erro fatal ao iniciar aplicação');
     process.exit(1);
   }
 }
