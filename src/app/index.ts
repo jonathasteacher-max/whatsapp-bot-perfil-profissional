@@ -15,7 +15,7 @@ export function createApp(): Express {
   app.use(express.urlencoded({ extended: true }));
 
   // Logging de requisições
-  app.use((req, res, next) => {
+  app.use((req, _res, next) => {
     logger.debug('Requisição HTTP', {
       method: req.method,
       path: req.path,
@@ -28,7 +28,7 @@ export function createApp(): Express {
   app.use('/api', setupRoutes());
 
   // Rota raiz
-  app.get('/', (req, res) => {
+  app.get('/', (_req, res) => {
     res.json({
       name: 'WhatsApp Bot - Perfil Profissional',
       version: '1.0.0',
@@ -41,7 +41,7 @@ export function createApp(): Express {
   });
 
   // Handler de erros
-  app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     logger.error('Erro não tratado', { error: err.message, stack: err.stack });
     res.status(500).json({
       error: 'Internal server error',
