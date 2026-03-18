@@ -1,5 +1,3 @@
-import { IncomingMessage } from '../types';
-
 /**
  * Interface do provedor WhatsApp
  * Abstrai a comunicação com WhatsApp permitindo trocar implementação
