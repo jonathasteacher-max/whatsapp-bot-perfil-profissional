@@ -15,6 +15,8 @@ const envSchema = z.object({
 
   // WhatsApp
   WHATSAPP_SESSION_PATH: z.string().default('./auth_info_baileys'),
+  WHATSAPP_USE_PAIRING_CODE: z.string().optional().default('false'),
+  WHATSAPP_PAIRING_NUMBER: z.string().optional(),
 
   // Logs
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
@@ -41,4 +43,10 @@ export const serverConfig = {
   host: env.HOST,
   isProduction: env.NODE_ENV === 'production',
   isDevelopment: env.NODE_ENV === 'development',
+};
+
+export const whatsappConfig = {
+  sessionPath: env.WHATSAPP_SESSION_PATH,
+  usePairingCode: env.WHATSAPP_USE_PAIRING_CODE === 'true',
+  pairingNumber: env.WHATSAPP_PAIRING_NUMBER,
 };
