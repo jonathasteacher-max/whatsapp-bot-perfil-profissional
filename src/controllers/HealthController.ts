@@ -11,7 +11,7 @@ export class HealthController {
    * GET /health
    * Retorna status da aplicação
    */
-  async check(req: Request, res: Response): Promise<void> {
+  async check(_req: Request, res: Response): Promise<void> {
     try {
       const health = {
         status: 'healthy',
