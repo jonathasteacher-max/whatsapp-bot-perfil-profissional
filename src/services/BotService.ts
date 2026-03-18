@@ -34,7 +34,7 @@ export class BotService {
       logger.info('Iniciando Bot Service...');
 
       // Registra handler de mensagens
-      this.whatsappProvider.onMessage(async (from, message, messageId, contactName) => {
+      this.whatsappProvider.onMessage(async (from, message, _messageId, contactName) => {
         await this.handleMessage(from, message, contactName);
       });
 
@@ -56,26 +56,26 @@ export class BotService {
       const normalizedMessage = message.toLowerCase().trim();
       const isFirstContact = this.cooldownService.isFirstContact(from);
 
-      // 🌟 PRIMEIRO CONTATO - Sempre envia boas-vindas personalizadas
+      // PRIMEIRO CONTATO - Sempre envia boas-vindas personalizadas
       if (isFirstContact) {
         logger.info('Primeiro contato detectado - enviando boas-vindas', { from, contactName });
         await this.sendWelcome(from, contactName);
         await this.showMainMenu(from);
         this.conversationStates.set(from, ConversationState.MAIN_MENU);
-        
-        // ✅ MARCA PRIMEIRO CONTATO (sem ativar cooldown - permite respostas hoje)
+
+        // Marca primeiro contato sem ativar cooldown
         this.cooldownService.markFirstContactDone(from);
         return;
       }
 
-      // ✅ OPÇÕES DE MENU (1-5) - SEMPRE RESPONDEM (ignoram cooldown)
+      // Opções de menu (1-5) sempre respondem
       const menuOption = this.intentService.isMenuOption(message);
       if (menuOption) {
         await this.handleMenuOption(from, menuOption);
-        return; // NÃO ativa cooldown - permite navegação livre pelo menu
+        return;
       }
 
-      // ⚠️ VERIFICA COOLDOWN - Para textos livres, saudações, etc
+      // Cooldown para textos livres
       if (!this.cooldownService.canRespond(from)) {
         logger.info('Ignorando mensagem devido ao cooldown', { from });
         return;
@@ -93,8 +93,8 @@ export class BotService {
         await this.sendWelcome(from, contactName);
         await this.showMainMenu(from);
         this.conversationStates.set(from, ConversationState.MAIN_MENU);
-        
-        // ✅ REGISTRA INTERAÇÃO - Ativa cooldown de 24h
+
+        // Ativa cooldown
         this.cooldownService.registerInteraction(from);
         return;
       }
@@ -103,12 +103,11 @@ export class BotService {
       const intent = this.intentService.identifyIntent(message);
       if (intent) {
         await this.handleIntent(from, intent);
-        // ✅ REGISTRA INTERAÇÃO - Ativa cooldown de 24h
         this.cooldownService.registerInteraction(from);
         return;
       }
 
-      // Fallback - Ativa cooldown pois pessoa mandou texto livre
+      // Fallback
       await this.showFallback(from);
       this.cooldownService.registerInteraction(from);
     } catch (error) {
@@ -124,15 +123,13 @@ export class BotService {
    * Envia mensagem de boas-vindas personalizada
    */
   private async sendWelcome(from: string, contactName?: string): Promise<void> {
-    // Personaliza saudação com nome do contato
     let welcomeMessage = botMessages.welcome;
-    
+
     if (contactName) {
-      // Adiciona o nome no início da mensagem
-      welcomeMessage = `Olá, *${contactName}*! 👋\n\n` + 
+      welcomeMessage = `Olá, *${contactName}*! 👋\n\n` +
         welcomeMessage.replace('Olá! 👋\n\n', '');
     }
-    
+
     await this.whatsappProvider.sendText(from, welcomeMessage);
   }
 
