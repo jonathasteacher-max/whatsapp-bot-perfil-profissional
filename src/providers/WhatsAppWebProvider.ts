@@ -38,6 +38,15 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
       const baileysLogger = pino({ level: 'fatal' });
       const usePairingCode = whatsappConfig.usePairingCode;
 
+      logger.info(
+        {
+          sessionPath: env.WHATSAPP_SESSION_PATH,
+          usePairingCode,
+          hasPairingNumber: Boolean(whatsappConfig.pairingNumber),
+        },
+        'Configuracao de autenticacao do WhatsApp carregada'
+      );
+
       this.sock = makeWASocket({
         version,
         auth: {
@@ -54,15 +63,14 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
         }
 
         const code = await this.sock.requestPairingCode(whatsappConfig.pairingNumber);
-        logger.info('Codigo de pareamento gerado. No WhatsApp: Aparelhos conectados > Conectar com numero de telefone', {
-          pairingCode: code,
-        });
+        logger.info(
+          { pairingCode: code, pairingNumber: whatsappConfig.pairingNumber },
+          'Codigo de pareamento gerado. No WhatsApp: Aparelhos conectados > Conectar com numero de telefone'
+        );
       }
 
-      // Salvar credenciais quando atualizadas
       this.sock.ev.on('creds.update', saveCreds);
 
-      // Gerenciar conexão
       this.sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
@@ -75,10 +83,13 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
           const shouldReconnect =
             (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
 
-          logger.warn('Conexão fechada', {
-            shouldReconnect,
-            statusCode: (lastDisconnect?.error as Boom)?.output?.statusCode,
-          });
+          logger.warn(
+            {
+              shouldReconnect,
+              statusCode: (lastDisconnect?.error as Boom)?.output?.statusCode,
+            },
+            'Conexão fechada'
+          );
 
           this.connectionState = 'disconnected';
 
@@ -90,11 +101,10 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
           }
         } else if (connection === 'open') {
           this.connectionState = 'connected';
-          logger.info('WhatsApp conectado com sucesso!');
+          logger.info('✅ WhatsApp conectado com sucesso!');
         }
       });
 
-      // Handler de mensagens
       this.sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
 
@@ -105,7 +115,11 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
 
       logger.info('WhatsApp Provider configurado. Aguardando conexão...');
     } catch (error) {
-      logger.error('Erro ao conectar WhatsApp', { error });
+      const normalizedError = error instanceof Error
+        ? { name: error.name, message: error.message, stack: error.stack }
+        : { message: String(error) };
+
+      logger.error({ error: normalizedError }, 'Erro ao conectar WhatsApp');
       this.connectionState = 'disconnected';
       throw error;
     }
@@ -146,7 +160,7 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
         await this.messageHandler(from, messageText.trim(), messageId, contactName);
       }
     } catch (error) {
-      logger.error('Erro ao processar mensagem', { error, msg });
+      logger.error({ error, msg }, 'Erro ao processar mensagem');
     }
   }
 
@@ -162,7 +176,7 @@ export class WhatsAppWebProvider implements IWhatsAppProvider {
       await this.sock.sendMessage(to, { text: message });
       logger.debug('Mensagem enviada', { to, message });
     } catch (error) {
-      logger.error('Erro ao enviar mensagem', { error, to });
+      logger.error({ error, to }, 'Erro ao enviar mensagem');
       throw error;
     }
   }
